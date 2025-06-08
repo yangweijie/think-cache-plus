@@ -1,0 +1,38 @@
+#!/usr/bin/env php
+<?php
+
+/*
+|--------------------------------------------------------------------------
+| Pest Test Runner
+|--------------------------------------------------------------------------
+|
+| This script provides a convenient way to run Pest tests for the
+| ThinkCache Plus package. It automatically loads the vendor autoloader
+| and executes the Pest test runner.
+|
+*/
+
+if (file_exists(__DIR__.'/vendor/autoload.php')) {
+    require __DIR__.'/vendor/autoload.php';
+} else {
+    echo "Please run 'composer install' first.\n";
+    exit(1);
+}
+
+// Check if Pest is installed
+if (!class_exists('Pest\TestSuite')) {
+    echo "Pest is not installed. Please run 'composer install --dev' first.\n";
+    exit(1);
+}
+
+// Run Pest
+$pestBinary = __DIR__.'/vendor/bin/pest';
+
+if (file_exists($pestBinary)) {
+    $command = $pestBinary . ' ' . implode(' ', array_slice($argv, 1));
+    passthru($command, $exitCode);
+    exit($exitCode);
+} else {
+    echo "Pest binary not found. Please run 'composer install --dev' first.\n";
+    exit(1);
+}

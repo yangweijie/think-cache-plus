@@ -1,0 +1,52 @@
+{
+    "name": "yangweijie/think-cache-plus",
+    "description": "ThinkPHP缓存扩展包 - 缓存变更事件监听与管理UI",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "yangweijie\\cache\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "jay",
+            "email": "917647288@qq.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "require": {
+        "php": ">=7.1.0",
+        "topthink/think-cache": "^2.0.0 | ^3.0.0",
+        "topthink/framework": "^6.0.0 | ^8.0.0",
+        "topthink/think-orm": "^2.0.0 | ^3.0.0 | ^4.0.0",
+        "topthink/think-template": "^2.0.0 | ^3.0.0",
+        "topthink/think-container": "^2.0.0 | ^3.0.0",
+        "topthink/think-migration": "3.1.x-dev"
+    },
+    "require-dev": {
+        "pestphp/pest": "^1.23"
+    },
+    "scripts": {
+        "test": "pest",
+        "test:unit": "pest tests/Unit",
+        "test:feature": "pest tests/Feature",
+        "test:coverage": "pest --coverage",
+        "test:watch": "pest --watch"
+    },
+    "extra": {
+        "think": {
+            "services": [
+                "yangweijie\\cache\\Service"
+            ],
+            "config": {
+                "cache_plus": "config/cache_plus.php"
+            }
+        }
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}

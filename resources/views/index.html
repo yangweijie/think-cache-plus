@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThinkCache Plus - 缓存管理</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-gray-50">
+    <div id="app" class="min-h-screen">
+        <!-- 顶部导航 -->
+        <nav class="bg-white shadow-sm border-b">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16">
+                    <div class="flex items-center">
+                        <i class="fas fa-database text-blue-600 text-2xl mr-3"></i>
+                        <h1 class="text-xl font-semibold text-gray-900">ThinkCache Plus</h1>
+                    </div>
+                    <div class="flex items-center space-x-4">
+                        <button @click="refreshData" class="btn-primary">
+                            <i class="fas fa-sync-alt mr-2"></i>刷新
+                        </button>
+                        <button @click="showClearModal = true" class="btn-danger">
+                            <i class="fas fa-trash mr-2"></i>清空缓存
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </nav>
+
+        <!-- 统计卡片 -->
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="stat-card">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-blue-100 text-blue-600">
+                            <i class="fas fa-key text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">当前缓存</p>
+                            <p class="text-2xl font-semibold text-gray-900">{{ stats.current_keys || 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-green-100 text-green-600">
+                            <i class="fas fa-check-circle text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">有效缓存</p>
+                            <p class="text-2xl font-semibold text-gray-900">{{ stats.existing_keys || 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-yellow-100 text-yellow-600">
+                            <i class="fas fa-tags text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">标签数量</p>
+                            <p class="text-2xl font-semibold text-gray-900">{{ stats.tags || 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="flex items-center">
+                        <div class="p-3 rounded-full bg-purple-100 text-purple-600">
+                            <i class="fas fa-history text-xl"></i>
+                        </div>
+                        <div class="ml-4">
+                            <p class="text-sm font-medium text-gray-600">今日操作</p>
+                            <p class="text-2xl font-semibold text-gray-900">{{ stats.today || 0 }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 主要内容区域 -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- 缓存列表 -->
+                <div class="lg:col-span-2">
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <div class="flex justify-between items-center">
+                                <h2 class="text-lg font-medium text-gray-900">缓存列表</h2>
+                                <div class="flex space-x-2">
+                                    <input
+                                        v-model="searchKey"
+                                        @input="searchCaches"
+                                        type="text"
+                                        placeholder="搜索缓存键..."
+                                        class="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                    <button @click="loadCaches" class="btn-secondary">
+                                        <i class="fas fa-search"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full divide-y divide-gray-200">
+                                <thead class="bg-gray-50">
+                                    <tr>
+                                        <th class="table-header">
+                                            <input type="checkbox" @change="toggleSelectAll" class="rounded">
+                                        </th>
+                                        <th class="table-header">缓存键</th>
+                                        <th class="table-header">状态</th>
+                                        <th class="table-header">类型</th>
+                                        <th class="table-header">大小</th>
+                                        <th class="table-header">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="bg-white divide-y divide-gray-200">
+                                    <tr v-for="cache in caches" :key="cache.key" class="hover:bg-gray-50">
+                                        <td class="table-cell">
+                                            <input
+                                                type="checkbox"
+                                                :value="cache.key"
+                                                v-model="selectedKeys"
+                                                class="rounded"
+                                            >
+                                        </td>
+                                        <td class="table-cell">
+                                            <div class="text-sm font-medium text-gray-900 truncate max-w-xs" :title="cache.key">
+                                                {{ cache.key }}
+                                            </div>
+                                        </td>
+                                        <td class="table-cell">
+                                            <span :class="cache.exists ? 'badge-success' : 'badge-danger'">
+                                                {{ cache.exists ? '存在' : '已过期' }}
+                                            </span>
+                                        </td>
+                                        <td class="table-cell text-sm text-gray-500">{{ cache.type }}</td>
+                                        <td class="table-cell text-sm text-gray-500">{{ formatSize(cache.size) }}</td>
+                                        <td class="table-cell">
+                                            <div class="flex space-x-2">
+                                                <button @click="viewCache(cache)" class="btn-sm btn-secondary">
+                                                    <i class="fas fa-eye"></i>
+                                                </button>
+                                                <button @click="deleteCache(cache.key)" class="btn-sm btn-danger">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- 分页 -->
+                        <div class="px-6 py-3 border-t border-gray-200 flex justify-between items-center">
+                            <div class="flex space-x-2">
+                                <button
+                                    @click="batchDelete"
+                                    :disabled="selectedKeys.length === 0"
+                                    class="btn-danger btn-sm"
+                                    :class="{ 'opacity-50 cursor-not-allowed': selectedKeys.length === 0 }"
+                                >
+                                    <i class="fas fa-trash mr-1"></i>批量删除 ({{ selectedKeys.length }})
+                                </button>
+                            </div>
+                            <div class="flex items-center space-x-2">
+                                <button
+                                    @click="prevPage"
+                                    :disabled="currentPage <= 1"
+                                    class="btn-secondary btn-sm"
+                                >
+                                    上一页
+                                </button>
+                                <span class="text-sm text-gray-700">
+                                    第 {{ currentPage }} 页，共 {{ totalPages }} 页
+                                </span>
+                                <button
+                                    @click="nextPage"
+                                    :disabled="currentPage >= totalPages"
+                                    class="btn-secondary btn-sm"
+                                >
+                                    下一页
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 侧边栏 -->
+                <div class="space-y-6">
+                    <!-- 标签管理 -->
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">标签管理</h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="space-y-2">
+                                <div v-for="tag in tags" :key="tag" class="flex justify-between items-center">
+                                    <span class="text-sm text-gray-700">{{ tag }}</span>
+                                    <button @click="deleteByTag(tag)" class="text-red-600 hover:text-red-800">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                <div v-if="tags.length === 0" class="text-sm text-gray-500 text-center py-4">
+                                    暂无标签
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 最近操作 -->
+                    <div class="bg-white rounded-lg shadow">
+                        <div class="px-6 py-4 border-b border-gray-200">
+                            <h3 class="text-lg font-medium text-gray-900">最近操作</h3>
+                        </div>
+                        <div class="p-6">
+                            <div class="space-y-3">
+                                <div v-for="log in recentLogs" :key="log.id" class="text-sm">
+                                    <div class="flex justify-between items-start">
+                                        <div class="flex-1">
+                                            <div class="font-medium text-gray-900 truncate">{{ log.cache_key }}</div>
+                                            <div class="text-gray-500">{{ log.operation }}</div>
+                                        </div>
+                                        <div class="text-xs text-gray-400 ml-2">
+                                            {{ formatTime(log.created_at) }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div v-if="recentLogs.length === 0" class="text-sm text-gray-500 text-center py-4">
+                                    暂无操作记录
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 缓存详情模态框 -->
+        <div v-if="showDetailModal" class="modal-overlay" @click="showDetailModal = false">
+            <div class="modal-content" @click.stop>
+                <div class="modal-header">
+                    <h3 class="text-lg font-medium">缓存详情</h3>
+                    <button @click="showDetailModal = false" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <div v-if="selectedCache">
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">缓存键</label>
+                                <p class="mt-1 text-sm text-gray-900 break-all">{{ selectedCache.key }}</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">状态</label>
+                                <span :class="selectedCache.exists ? 'badge-success' : 'badge-danger'">
+                                    {{ selectedCache.exists ? '存在' : '已过期' }}
+                                </span>
+                            </div>
+                            <div v-if="selectedCache.exists">
+                                <label class="block text-sm font-medium text-gray-700">缓存值</label>
+                                <div class="mt-1 text-sm bg-gray-50 border border-gray-200 rounded-md p-3 max-h-64 overflow-auto">
+                                    <pre class="whitespace-pre-wrap break-words text-gray-800 font-mono text-xs">{{ formatValue(selectedCache.value) }}</pre>
+                                </div>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">操作历史</label>
+                                <div class="mt-2 space-y-2">
+                                    <div v-for="log in selectedCache.logs" :key="log.id" class="text-sm border-l-4 border-blue-200 pl-3">
+                                        <div class="flex justify-between">
+                                            <span class="font-medium">{{ log.operation }}</span>
+                                            <span class="text-gray-500">{{ formatTime(log.created_at) }}</span>
+                                        </div>
+                                        <div class="text-gray-600">{{ log.file_path }}:{{ log.line_number }}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 清空确认模态框 -->
+        <div v-if="showClearModal" class="modal-overlay" @click="showClearModal = false">
+            <div class="modal-content" @click.stop>
+                <div class="modal-header">
+                    <h3 class="text-lg font-medium text-red-600">确认清空</h3>
+                    <button @click="showClearModal = false" class="text-gray-400 hover:text-gray-600">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    <p class="text-gray-700">确定要清空所有缓存吗？此操作不可恢复。</p>
+                </div>
+                <div class="modal-footer">
+                    <button @click="showClearModal = false" class="btn-secondary mr-3">取消</button>
+                    <button @click="clearAllCache" class="btn-danger">确认清空</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <style>
+        .btn-primary {
+            background-color: #2563eb;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-primary:hover { background-color: #1d4ed8; }
+
+        .btn-secondary {
+            background-color: #4b5563;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-secondary:hover { background-color: #374151; }
+
+        .btn-danger {
+            background-color: #dc2626;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: background-color 0.2s;
+            border: none;
+            cursor: pointer;
+        }
+        .btn-danger:hover { background-color: #b91c1c; }
+
+        .btn-sm {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+
+        .stat-card {
+            background: white;
+            overflow: hidden;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+
+        .table-header {
+            padding: 0.75rem 1.5rem;
+            text-align: left;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .table-cell {
+            padding: 1rem 1.5rem;
+            white-space: nowrap;
+        }
+
+        .badge-success {
+            display: inline-flex;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            background-color: #dcfce7;
+            color: #166534;
+        }
+
+        .badge-danger {
+            display: inline-flex;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            border-radius: 9999px;
+            background-color: #fecaca;
+            color: #991b1b;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 1rem;
+            animation: fadeIn 0.2s ease-out;
+        }
+        .modal-content {
+            background: white;
+            border-radius: 0.5rem;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            max-width: 42rem;
+            width: 100%;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+        .modal-header {
+            padding: 1.5rem;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .modal-body {
+            padding: 1.5rem;
+        }
+        .modal-footer {
+            padding: 1.5rem;
+            border-top: 1px solid #e5e7eb;
+            display: flex;
+            justify-content: flex-end;
+        }
+    </style>
+
+    <script>
+        const { createApp } = Vue;
+        axios.interceptors.request.use(config => {
+            config.headers.HTTP_X_REQUESTED_WITH = 'xmlhttprequest';
+            return config;
+        });
+        const config = {
+            headers:{
+                HTTP_X_REQUESTED_WITH: 'xmlhttprequest',
+            }
+        };
+
+        createApp({
+            data() {
+                return {
+                    stats: {},
+                    caches: [],
+                    tags: [],
+                    recentLogs: [],
+                    selectedKeys: [],
+                    selectedCache: null,
+                    searchKey: '',
+                    currentPage: 1,
+                    totalPages: 1,
+                    pageSize: 20,
+                    showDetailModal: false,
+                    showClearModal: false,
+                    loading: false
+                };
+            },
+            mounted() {
+                this.loadData();
+            },
+            methods: {
+                async loadData() {
+                    await Promise.all([
+                        this.loadStatistics(),
+                        this.loadCaches(),
+                        this.loadTags(),
+                        this.loadRecentLogs()
+                    ]);
+                },
+
+                async loadStatistics() {
+                    try {
+                        const response = await axios.get('/cache-plus/api/statistics', config);
+                        this.stats = response.data.data;
+                    } catch (error) {
+                        console.error('加载统计信息失败:', error);
+                    }
+                },
+
+                async loadCaches() {
+                    try {
+                        this.loading = true;
+                        const response = await axios.get('/cache-plus/api/list', {
+                            params: {
+                                page: this.currentPage,
+                                limit: this.pageSize,
+                                key: this.searchKey
+                            },
+                            headers: config.headers
+                        });
+                        this.caches = response.data.data;
+                        this.totalPages = Math.ceil(response.data.total / this.pageSize);
+                    } catch (error) {
+                        console.error('加载缓存列表失败:', error);
+                    } finally {
+                        this.loading = false;
+                    }
+                },
+
+                async loadTags() {
+                    try {
+                        const response = await axios.get('/cache-plus/api/tags', config);
+                        this.tags = response.data.data;
+                    } catch (error) {
+                        console.error('加载标签失败:', error);
+                    }
+                },
+
+                async loadRecentLogs() {
+                    try {
+                        const response = await axios.get('/cache-plus/api/logs', {
+                            params: { limit: 10 },
+                            headers: config.headers
+                        });
+                        this.recentLogs = response.data.data;
+                    } catch (error) {
+                        console.error('加载最近日志失败:', error);
+                    }
+                },
+
+                async viewCache(cache) {
+                    try {
+                        const response = await axios.get('/cache-plus/api/detail', {
+                            params: { key: cache.key },
+                            headers: config.headers
+                        });
+                        this.selectedCache = response.data.data;
+                        this.showDetailModal = true;
+                    } catch (error) {
+                        console.error('获取缓存详情失败:', error);
+                    }
+                },
+
+                async deleteCache(key) {
+                    if (!confirm(`确定要删除缓存 "${key}" 吗？`)) return;
+
+                    try {
+                        await axios.delete('/cache-plus/api/delete', {
+                            params: { key },
+                            headers: config.headers
+                        });
+                        this.loadCaches();
+                        this.loadStatistics();
+                    } catch (error) {
+                        console.error('删除缓存失败:', error);
+                        alert('删除失败');
+                    }
+                },
+
+                async batchDelete() {
+                    if (this.selectedKeys.length === 0) return;
+                    if (!confirm(`确定要删除选中的 ${this.selectedKeys.length} 个缓存吗？`)) return;
+
+                    try {
+                        await axios.delete('/cache-plus/api/batch-delete', {
+                            data: { keys: this.selectedKeys },
+                            headers: config.headers
+                        });
+                        this.selectedKeys = [];
+                        this.loadCaches();
+                        this.loadStatistics();
+                    } catch (error) {
+                        console.error('批量删除失败:', error);
+                        alert('删除失败');
+                    }
+                },
+
+                async deleteByTag(tag) {
+                    if (!confirm(`确定要删除标签 "${tag}" 下的所有缓存吗？`)) return;
+
+                    try {
+                        await axios.delete('/cache-plus/api/delete-by-tag', {
+                            params: { tag },
+                            headers: config.headers
+                        });
+                        this.loadCaches();
+                        this.loadTags();
+                        this.loadStatistics();
+                    } catch (error) {
+                        console.error('删除标签缓存失败:', error);
+                        alert('删除失败');
+                    }
+                },
+
+                async clearAllCache() {
+                    try {
+                        await axios.delete('/cache-plus/api/clear', config);
+                        this.showClearModal = false;
+                        this.loadData();
+                        alert('清空成功');
+                    } catch (error) {
+                        console.error('清空缓存失败:', error);
+                        alert('清空失败');
+                    }
+                },
+
+                searchCaches() {
+                    this.currentPage = 1;
+                    this.loadCaches();
+                },
+
+                prevPage() {
+                    if (this.currentPage > 1) {
+                        this.currentPage--;
+                        this.loadCaches();
+                    }
+                },
+
+                nextPage() {
+                    if (this.currentPage < this.totalPages) {
+                        this.currentPage++;
+                        this.loadCaches();
+                    }
+                },
+
+                toggleSelectAll(event) {
+                    if (event.target.checked) {
+                        this.selectedKeys = this.caches.map(cache => cache.key);
+                    } else {
+                        this.selectedKeys = [];
+                    }
+                },
+
+                refreshData() {
+                    this.loadData();
+                },
+
+                formatSize(bytes) {
+                    if (bytes === 0) return '0 B';
+                    const k = 1024;
+                    const sizes = ['B', 'KB', 'MB', 'GB'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+                },
+
+                formatTime(time) {
+                    return new Date(time).toLocaleString();
+                },
+
+                formatValue(value) {
+                    if (typeof value === 'string') {
+                        return value.length > 1000 ? value.substring(0, 1000) + '...' : value;
+                    }
+                    return JSON.stringify(value, null, 2);
+                }
+            }
+        }).mount('#app');
+    </script>
+</body>
+</html>
