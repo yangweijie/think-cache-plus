@@ -3,6 +3,7 @@
 namespace yangweijie\cache\model;
 
 use think\Model;
+use think\facade\Config;
 
 /**
  * 缓存日志模型
@@ -11,12 +12,12 @@ use think\Model;
 class CacheLog extends Model
 {
     protected $name = 'cache_log';
-    
+
     protected $autoWriteTimestamp = true;
-    
+
     protected $createTime = 'created_at';
     protected $updateTime = 'updated_at';
-    
+
     protected $type = [
         'tags' => 'json',
         'created_at' => 'datetime',
@@ -25,7 +26,7 @@ class CacheLog extends Model
 
     /**
      * 获取指定key的所有变更记录
-     * 
+     *
      * @param string $key
      * @return \think\Collection
      */
@@ -38,7 +39,7 @@ class CacheLog extends Model
 
     /**
      * 获取指定tag下的所有缓存记录
-     * 
+     *
      * @param string $tag
      * @return \think\Collection
      */
@@ -51,7 +52,7 @@ class CacheLog extends Model
 
     /**
      * 获取最近的缓存操作记录
-     * 
+     *
      * @param int $limit
      * @return \think\Collection
      */
@@ -64,7 +65,7 @@ class CacheLog extends Model
 
     /**
      * 获取缓存统计信息
-     * 
+     *
      * @return array
      */
     public static function getStatistics(): array
@@ -90,19 +91,34 @@ class CacheLog extends Model
 
     /**
      * 清理过期的日志记录
-     * 
-     * @param int $days 保留天数
+     *
+     * @param int|null $days 保留天数，为null时从配置读取
      * @return int 删除的记录数
      */
-    public static function cleanOldLogs(int $days = 30): int
+    public static function cleanOldLogs(?int $days = null): int
     {
+        if ($days === null) {
+            $config = Config::get('cache_plus', []);
+            $days = $config['log_retention_days'] ?? 30;
+        }
+
         $date = date('Y-m-d H:i:s', strtotime("-{$days} days"));
         return self::where('created_at', '<', $date)->delete();
     }
 
     /**
+     * 自动清理过期日志（根据配置）
+     *
+     * @return int 删除的记录数
+     */
+    public static function autoCleanOldLogs(): int
+    {
+        return self::cleanOldLogs();
+    }
+
+    /**
      * 搜索缓存日志
-     * 
+     *
      * @param array $params
      * @return \think\Paginator
      */

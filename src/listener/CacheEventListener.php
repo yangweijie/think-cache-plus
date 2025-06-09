@@ -3,6 +3,7 @@
 namespace yangweijie\cache\listener;
 
 use think\Event;
+use think\facade\Config;
 use yangweijie\cache\model\CacheLog;
 
 /**
@@ -11,6 +12,29 @@ use yangweijie\cache\model\CacheLog;
  */
 class CacheEventListener
 {
+    /**
+     * 配置缓存
+     * @var array
+     */
+    protected $config = null;
+
+    /**
+     * 日志记录频率限制缓存
+     * @var array
+     */
+    protected static $throttleCache = [];
+
+    /**
+     * 获取配置
+     * @return array
+     */
+    protected function getConfig(): array
+    {
+        if ($this->config === null) {
+            $this->config = Config::get('cache_plus', []);
+        }
+        return $this->config;
+    }
     /**
      * 监听缓存写入事件
      *
@@ -53,6 +77,29 @@ class CacheEventListener
     protected function logCacheOperation(string $operation, array $data)
     {
         try {
+            $config = $this->getConfig();
+
+            // 检查是否启用监听
+            if (!($config['enable_listener'] ?? true)) {
+                return;
+            }
+
+            // 检查性能监控是否启用
+            $performanceConfig = $config['performance'] ?? [];
+            if (!($performanceConfig['enable_monitoring'] ?? true)) {
+                return;
+            }
+
+            // 检查日志记录频率限制
+            if ($this->shouldThrottleLog($data['key'] ?? '', $performanceConfig)) {
+                return;
+            }
+
+            // 检查缓存键是否需要排除
+            if ($this->shouldExcludeKey($data['key'] ?? '')) {
+                return;
+            }
+
             // 如果事件数据中包含调用者信息，直接使用
             if (isset($data['caller']) && $data['caller']) {
                 $caller = $data['caller'];
@@ -62,24 +109,39 @@ class CacheEventListener
                 $caller = $this->findRealCaller($trace);
             }
 
+            // 检查文件路径是否需要排除
+            if ($this->shouldExcludeFile($caller['file'] ?? '')) {
+                return;
+            }
+
             // 获取闭包内容（如果存在）
             $closureContent = '';
             $closureMd5 = '';
 
-            // 优先检查单独传递的闭包
-            if (isset($data['closure']) && $data['closure'] instanceof \Closure) {
-                $closureContent = $this->getClosureContent($data['closure']);
-                $closureMd5 = md5($closureContent);
-            } elseif (isset($data['value']) && $data['value'] instanceof \Closure) {
-                $closureContent = $this->getClosureContent($data['value']);
-                $closureMd5 = md5($closureContent);
-            } elseif (isset($data['result'])) {
-                // 如果有闭包执行结果，记录结果而不是闭包内容
-                $closureContent = is_string($data['result']) ? $data['result'] : serialize($data['result']);
-                $closureMd5 = md5($closureContent);
-            } elseif (isset($data['value'])) {
-                $closureContent = is_string($data['value']) ? $data['value'] : serialize($data['value']);
-                $closureMd5 = md5($closureContent);
+            // 检查是否记录闭包内容
+            if ($config['log_closure_content'] ?? true) {
+                // 优先检查单独传递的闭包
+                if (isset($data['closure']) && $data['closure'] instanceof \Closure) {
+                    $closureContent = $this->getClosureContent($data['closure']);
+                    $closureMd5 = md5($closureContent);
+                } elseif (isset($data['value']) && $data['value'] instanceof \Closure) {
+                    $closureContent = $this->getClosureContent($data['value']);
+                    $closureMd5 = md5($closureContent);
+                } elseif (isset($data['result'])) {
+                    // 如果有闭包执行结果，记录结果而不是闭包内容
+                    $closureContent = is_string($data['result']) ? $data['result'] : serialize($data['result']);
+                    $closureMd5 = md5($closureContent);
+                } elseif (isset($data['value'])) {
+                    $closureContent = is_string($data['value']) ? $data['value'] : serialize($data['value']);
+                    $closureMd5 = md5($closureContent);
+                }
+
+                // 检查闭包内容长度限制
+                $maxLength = $config['max_closure_content_length'] ?? 10240;
+                if (strlen($closureContent) > $maxLength) {
+                    $closureContent = substr($closureContent, 0, $maxLength) . '... [truncated]';
+                    $closureMd5 = md5($closureContent);
+                }
             }
 
             // 记录到数据库
@@ -217,5 +279,86 @@ class CacheEventListener
 
         // 如果无法解析，返回原始内容
         return $content;
+    }
+
+    /**
+     * 检查缓存键是否需要排除
+     *
+     * @param string $key
+     * @return bool
+     */
+    protected function shouldExcludeKey(string $key): bool
+    {
+        $config = $this->getConfig();
+        $patterns = $config['exclude_key_patterns'] ?? [];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $key)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 检查文件路径是否需要排除
+     *
+     * @param string $file
+     * @return bool
+     */
+    protected function shouldExcludeFile(string $file): bool
+    {
+        $config = $this->getConfig();
+        $patterns = $config['exclude_file_patterns'] ?? [];
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $file)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 检查是否应该限制日志记录频率
+     *
+     * @param string $key
+     * @param array $performanceConfig
+     * @return bool
+     */
+    protected function shouldThrottleLog(string $key, array $performanceConfig): bool
+    {
+        $throttleSeconds = $performanceConfig['log_throttle_seconds'] ?? 0;
+
+        // 如果没有设置频率限制，不限制
+        if ($throttleSeconds <= 0) {
+            return false;
+        }
+
+        $now = time();
+        $throttleKey = md5($key);
+
+        // 检查是否在限制时间内
+        if (isset(self::$throttleCache[$throttleKey])) {
+            $lastLogTime = self::$throttleCache[$throttleKey];
+            if (($now - $lastLogTime) < $throttleSeconds) {
+                return true; // 需要限制
+            }
+        }
+
+        // 更新最后记录时间
+        self::$throttleCache[$throttleKey] = $now;
+
+        // 清理过期的缓存项（避免内存泄漏）
+        if (count(self::$throttleCache) > 1000) {
+            $cutoff = $now - $throttleSeconds;
+            self::$throttleCache = array_filter(self::$throttleCache, function($time) use ($cutoff) {
+                return $time > $cutoff;
+            });
+        }
+
+        return false;
     }
 }

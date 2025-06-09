@@ -87,3 +87,29 @@ it('can handle closure in event data', function () {
     expect(is_callable($closure))->toBeTrue();
     expect(is_int($closure()))->toBeTrue();
 });
+
+it('can validate configuration methods exist', function () {
+    $listener = new \yangweijie\cache\listener\CacheEventListener();
+
+    // 使用反射检查方法是否存在
+    $reflection = new ReflectionClass($listener);
+
+    expect($reflection->hasMethod('shouldExcludeKey'))->toBeTrue();
+    expect($reflection->hasMethod('shouldExcludeFile'))->toBeTrue();
+    expect($reflection->hasMethod('getConfig'))->toBeTrue();
+});
+
+it('can validate filter method signatures', function () {
+    $listener = new \yangweijie\cache\listener\CacheEventListener();
+    $reflection = new ReflectionClass($listener);
+
+    // 检查 shouldExcludeKey 方法
+    $keyMethod = $reflection->getMethod('shouldExcludeKey');
+    expect($keyMethod->getNumberOfParameters())->toBe(1);
+    expect($keyMethod->getReturnType()->getName())->toBe('bool');
+
+    // 检查 shouldExcludeFile 方法
+    $fileMethod = $reflection->getMethod('shouldExcludeFile');
+    expect($fileMethod->getNumberOfParameters())->toBe(1);
+    expect($fileMethod->getReturnType()->getName())->toBe('bool');
+});
