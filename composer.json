@@ -22,7 +22,8 @@
         "topthink/think-orm": "^2.0.0 | ^3.0.0 | ^4.0.0",
         "topthink/think-template": "^2.0.0 | ^3.0.0",
         "topthink/think-container": "^2.0.0 | ^3.0.0",
-        "topthink/think-migration": "3.1.x-dev"
+        "topthink/think-migration": "3.1.x-dev",
+        "topthink/think-helper": "^3.1"
     },
     "require-dev": {
         "pestphp/pest": "^1.23"

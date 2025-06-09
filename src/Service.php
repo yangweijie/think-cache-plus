@@ -3,7 +3,7 @@
 namespace yangweijie\cache;
 
 use think\Service as BaseService;
-use yangweijie\cache\listener\CacheEventListener;
+use yangweijie\cache\listener\ExtendedCacheEventListener;
 
 /**
  * ThinkCachePlus 服务提供者
@@ -14,6 +14,9 @@ class Service extends BaseService
     {
         // 注册缓存管理服务
         $this->app->bind('cache.manager', \yangweijie\cache\service\CacheManager::class);
+
+        // 注册数据库服务提供者
+        $this->app->register(\yangweijie\cache\provider\DatabaseServiceProvider::class);
     }
 
     public function boot()
@@ -27,6 +30,7 @@ class Service extends BaseService
         // 注册命令
         $this->commands([
             'cache-plus:install' => \yangweijie\cache\command\InstallCommand::class,
+            'cache-plus:auto-tag-setup' => \yangweijie\cache\command\AutoTagSetupCommand::class,
         ]);
     }
 
@@ -36,7 +40,7 @@ class Service extends BaseService
     protected function registerEventListeners()
     {
         $event = $this->app->event;
-        $listener = new CacheEventListener();
+        $listener = new ExtendedCacheEventListener();
 
         // 监听缓存写入事件
         $event->listen('cache.write', [$listener, 'onCacheWrite']);
